@@ -153,6 +153,7 @@ class Ball {
     constructor(pos, radius, xMax, yMax) {
         this.radius = radius;
 
+        this.lastPos = pos;
         this.pos = pos;
         this.vel = Vec2.zero();
 
@@ -161,7 +162,8 @@ class Ball {
     }
 
     draw(ctx) {
-        drawCircle(ctx, this.pos, this.radius, "red");
+        drawCircle(ctx, this.lastPos, this.radius, "blue");
+        drawCircle(ctx, this.pos, this.radius, "blue");
     }
 
     step(dt) {
@@ -183,6 +185,7 @@ class Ball {
 
         const acc = (new Vec2(0, GRAVITY)).subtract(this.vel.scale(DRAG));
         this.vel = this.vel.add(acc.scale(dt));
+        this.lastPos = this.pos;
         this.pos = this.pos.add(this.vel.scale(dt));
     }
 }
@@ -194,6 +197,15 @@ function computePendulumEndPoint(position, angle) {
     return new Vec2(x, y);
 }
 
+
+function computeVelocityAlongPendulum(baseVel, angle, angVel, length) {
+    const x = -length * Math.sin(angle);
+    const y = -length * Math.cos(angle);
+    const r = new Vec2(-y, x);
+    return baseVel.add(r.scale(angVel));
+}
+
+
 function windQuad(vertices) {
     const v1 = vertices[0];
     const v2 = vertices[1];
@@ -204,13 +216,13 @@ function windQuad(vertices) {
 
     // inward-facing normal
     const n12 = v2.subtract(v1).orth();
-    const d3 = n12.dot(v3);
-    const d4 = n12.dot(v4);
+    const d3 = n12.dot(v3.subtract(v1));
+    const d4 = n12.dot(v4.subtract(v1));
 
     if (d3 >= 0 && d4 >= 0) {
         // v2 is next
         const n23 = v3.subtract(v2).orth();
-        if (n23.dot(v4) >= 0) {
+        if (n23.dot(v4.subtract(v2)) >= 0) {
             return [v1, v2, v3, v4];
         } else {
             return [v1, v2, v4, v3];
@@ -218,7 +230,7 @@ function windQuad(vertices) {
     } else if (d3 <= 0 && d4 <= 0) {
         // v2 is last
         const n13 = v3.subtract(v1).orth();
-        if (n13.dot(v4) >= 0) {
+        if (n13.dot(v4.subtract(v1)) >= 0) {
             return [v1, v3, v4, v2];
         } else {
             return [v1, v4, v3, v2];
@@ -240,14 +252,15 @@ function projectOnAxis(vertices, direction, origin) {
     return [Math.min(...values), Math.max(...values)];
 }
 
-function quadSegmentIntersect(quad, seg) {
+function quadSegmentIntersect(quad, seg, radius) {
     // use separating axis theorem (SAT): the two shapes are not intersecting
     // if and only if there exists a separating axis between them
 
     // check segment normal
-    let n = seg[1].subtract(seg[0]).unit().orth();
+    const s = seg[1].subtract(seg[0]);
+    let n = s.unit().orth();
     let values = projectOnAxis(quad, n, seg[0]);
-    if (values[0] > 0 || values[1] < 0) {
+    if (s.length() > 1e-3 && (values[0] > radius || values[1] < -radius)) {
         return false;
     }
 
@@ -255,13 +268,13 @@ function quadSegmentIntersect(quad, seg) {
     for (let i = 0; i < 3; i++) {
         n = quad[i + 1].subtract(quad[i]).unit().orth().negate();
         values = projectOnAxis(seg, n, quad[i]);
-        if (values[0] > 0) {
+        if (values[0] > radius) {
             return false;
         }
     }
     n = quad[0].subtract(quad[3]).unit().orth().negate();
     values = projectOnAxis(seg, n, quad[3]);
-    if (values[0] > 0) {
+    if (values[0] > radius) {
         return false;
     }
 
@@ -341,28 +354,43 @@ class Game {
         const bv1 = this.ball.pos;
         const bv2 = this.ball.pos.add(this.ball.vel.scale(dt));
 
-        const intersect = quadSegmentIntersect(this.pvs, [bv1, bv2]);
+        const intersect = quadSegmentIntersect(this.pvs, [bv1, bv2], this.ball.radius);
         if (intersect) {
-            console.log("intersect");
+            // console.log("intersect");
+
+            // compute normal the ball hits
+            const start = pv1.add(pv2).scale(0.5);
+            const end = pv3.add(pv4).scale(0.5);
+
+            const u = end.subtract(start).unit();
+            let n = u.orth();
+
+            // contact distance along the pendulum
+            const dist = this.ball.pos.subtract(this.pos).dot(u);
+            const vp = computeVelocityAlongPendulum(this.vel, this.angle, this.angVel, dist);
+
+            // make normal point in direction of motion
+            let vpn = n.dot(vp);
+            if (vpn < 0) {
+                n = n.negate();
+                vpn = -vpn;
+            }
+
+            // ball velocity along the normal direction takes on the pendulum
+            // velocity if it is less
+            const vbn = n.dot(this.ball.vel);
+            if (vbn < vpn) {
+                const vu = u.scale(u.dot(this.ball.vel));
+                const vn = n.scale(vpn);
+                this.ball.vel = vu.add(vn);
+            }
         }
-        //     const u1 = e1.subtract(s1).unit();
-        //     const n1 = u1.orth();
-        //
-        //     const vu = u1.scale(u1.dot(this.ball.vel));
-        //     // const vn = n1.scale(n1.dot(this.ball.vel));
-        //     const vn = n1.scale(n1.dot(this.vel.subtract(this.ball.vel)));
-        //     this.ball.vel = vu.add(vn);
-        // }
 
         // update positions
         this.pos = target;
         this.angle = wrapToPi(this.angle + dt * this.angVel);
 
         this.ball.step(dt);
-
-        // if (Math.abs(acc.x) > 0.01) {
-        //     console.log(acc.x);
-        // }
     }
 }
 
