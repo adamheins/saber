@@ -16,3 +16,7 @@ npx rollup --config
 ```
 
 Finally, open `index.html` in your browser of choice to play.
+
+## License
+
+MIT

@@ -1,4 +1,4 @@
-export function drawCircle(ctx, position, radius, color, fill=true) {
+export function drawCircle(ctx, position, radius, color, fill = true) {
     ctx.beginPath();
     ctx.arc(position.x, position.y, radius, 0, 2 * Math.PI);
     if (fill) {
