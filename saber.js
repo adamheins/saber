@@ -33,8 +33,9 @@ function drawPolygon(ctx, vertices, color) {
 }
 
 
-function drawLine(ctx, start, end, color) {
+function drawLine(ctx, start, end, color, width) {
     ctx.strokeStyle = color;
+    ctx.lineWidth = width;
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     ctx.lineTo(end.x, end.y);
@@ -51,42 +52,6 @@ function wrapToPi(x) {
         x += 2 * Math.PI;
     }
     return x;
-}
-
-
-function solve2x2(a, b, c, d, y1, y2) {
-    const det = a * d - b * c;
-    const x1 = (d * y1 - b * y2) / det;
-    const x2 = (-c * y1 + a * y2) / det;
-    return [x1, x2];
-}
-
-
-function segmentSegmentIntersect(s1, e1, s2, e2) {
-    const v1 = e1.subtract(s1);
-    const v2 = e2.subtract(s2);
-
-    const n1 = v1.orth();
-
-    if (Math.abs(n1.dot(v2)) <= 1e-3) {
-        // parallel
-        return false; // TODO
-    }
-
-    const s = s1.subtract(s2);
-
-    // determine the intersection point for the infinite lines
-    const a = -v1.dot(v1);
-    const b = v1.dot(v2);
-    const c = -v1.dot(v2);
-    const d = v2.dot(v2);
-    const y1 = v1.dot(s);
-    const y2 = v2.dot(s);
-
-    const t = solve2x2(a, b, c, d, y1, y2);
-    // console.log(t);
-
-    return (t[0] >= 0 && t[0] <= 1 && t[1] >= 0 && t[1] <= 1);
 }
 
 
@@ -167,19 +132,19 @@ class Ball {
     }
 
     step(dt) {
-        if (this.pos.x < 0) {
-            this.pos.x = 0
+        if (this.pos.x < this.radius) {
+            this.pos.x = this.radius;
             this.vel.x = -this.vel.x;
-        } else if (this.pos.x > this.xMax) {
-            this.pos.x = this.xMax;
+        } else if (this.pos.x > this.xMax - this.radius) {
+            this.pos.x = this.xMax - this.radius;
             this.vel.x = -this.vel.x;
         }
 
-        if (this.pos.y < 0) {
-            this.pos.y = 0
+        if (this.pos.y < this.radius) {
+            this.pos.y = this.radius;
             this.vel.y = -this.vel.y;
-        } else if (this.pos.y > this.yMax) {
-            this.pos.y = this.yMax;
+        } else if (this.pos.y > this.yMax - this.radius) {
+            this.pos.y = this.yMax - this.radius;
             this.vel.y = -this.vel.y;
         }
 
@@ -190,10 +155,15 @@ class Ball {
     }
 }
 
+// TODO
+class Saber {
 
-function computePendulumEndPoint(position, angle) {
-    const x = position.x - LENGTH * Math.sin(angle);
-    const y = position.y - LENGTH * Math.cos(angle);
+}
+
+
+function computePendulumPoint(position, angle, length) {
+    const x = position.x - length * Math.sin(angle);
+    const y = position.y - length * Math.cos(angle);
     return new Vec2(x, y);
 }
 
@@ -206,13 +176,12 @@ function computeVelocityAlongPendulum(baseVel, angle, angVel, length) {
 }
 
 
+// Wind a set of four vertices into counter-clockwise order
 function windQuad(vertices) {
     const v1 = vertices[0];
     const v2 = vertices[1];
     const v3 = vertices[2];
     const v4 = vertices[3];
-
-    let woundVertices = [v1];
 
     // inward-facing normal
     const n12 = v2.subtract(v1).orth();
@@ -247,8 +216,6 @@ function windQuad(vertices) {
 
 function projectOnAxis(vertices, direction, origin) {
     const values = vertices.map(v => v.subtract(origin).dot(direction));
-
-    // returns true if all values have the same sign
     return [Math.min(...values), Math.max(...values)];
 }
 
@@ -287,14 +254,16 @@ class Game {
         this.width = width;
         this.height = height;
 
+        // state of the hilt
         this.pos = new Vec2(0.5 * this.width, 0.5 * this.height);
         this.vel = Vec2.zero();
         this.acc = Vec2.zero();
 
-        // straight up
+        // straight up initial state
         this.angle = 0;
         this.angVel = 0;
 
+        // when true, "grab" the saber so that it cannot spin
         this.grab = false;
 
         this.ball = new Ball(new Vec2(100, 100), RADIUS, width, height);
@@ -304,20 +273,25 @@ class Game {
     }
 
     computeEndPosition() {
-        return computePendulumEndPoint(this.pos, this.angle);
+        return computePendulumPoint(this.pos, this.angle, LENGTH);
     }
 
     draw(ctx) {
         ctx.clearRect(0, 0, this.width, this.height);
 
+        // swept region of the blade
         if (this.pvs) {
             drawPolygon(ctx, this.pvs, "red");
         }
 
-        drawCircle(ctx, this.pos, RADIUS, "black");
-
+        // saber blade
         const end = this.computeEndPosition();
-        drawLine(ctx, this.pos, end, "red");
+        drawLine(ctx, this.pos, end, "red", 3);
+
+        // saber hilt
+        const v1 = computePendulumPoint(this.pos, this.angle, -RADIUS);
+        const v2 = computePendulumPoint(this.pos, this.angle, RADIUS);
+        drawLine(ctx, v1, v2, "black", 4);
 
         this.ball.draw(ctx);
     }
@@ -325,8 +299,7 @@ class Game {
     step(target, dt) {
         // compute new vel
         let newVel = target.subtract(this.pos).scale(1. / dt);
-        let newAcc = newVel.subtract(this.vel).scale(1. / dt);
-        let acc = newAcc;
+        let acc = newVel.subtract(this.vel).scale(1. / dt);
         this.vel = newVel;
 
         if (!this.grab) {
@@ -347,7 +320,7 @@ class Game {
         const pv1 = this.pos;
         const pv2 = target;
         const pv3 = this.computeEndPosition();
-        const pv4 = computePendulumEndPoint(target, this.angle + dt * this.angVel);
+        const pv4 = computePendulumPoint(target, this.angle + dt * this.angVel, LENGTH);
         this.pvs = windQuad([pv1, pv2, pv3, pv4]);
 
         // ball swept region (just a line segment)
@@ -356,7 +329,6 @@ class Game {
 
         const intersect = quadSegmentIntersect(this.pvs, [bv1, bv2], this.ball.radius);
         if (intersect) {
-            // console.log("intersect");
 
             // compute normal the ball hits
             const start = pv1.add(pv2).scale(0.5);
@@ -389,7 +361,6 @@ class Game {
         // update positions
         this.pos = target;
         this.angle = wrapToPi(this.angle + dt * this.angVel);
-
         this.ball.step(dt);
     }
 }
@@ -397,6 +368,11 @@ class Game {
 function main() {
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
+
+    // make actual canvas shape match the display shape
+    const w = canvas.offsetWidth;
+    canvas.width = w;
+    canvas.height = w;
 
     let started = false;
     let mouseDown = false;
