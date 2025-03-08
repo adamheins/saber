@@ -12,6 +12,10 @@ const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
 
+const BALL_COLOR = "blue";
+const SABER_COLOR = "red";
+const HILT_COLOR = "black";
+
 
 class Ball {
     constructor(pos, radius, xMax, yMax) {
@@ -26,11 +30,12 @@ class Ball {
     }
 
     draw(ctx) {
-        drawCircle(ctx, this.lastPos, this.radius, "blue");
-        drawCircle(ctx, this.pos, this.radius, "blue");
+        drawCircle(ctx, this.lastPos, this.radius, BALL_COLOR);
+        drawCircle(ctx, this.pos, this.radius, BALL_COLOR);
     }
 
     step(dt) {
+        // don't leave the screen
         if (this.pos.x < this.radius) {
             this.pos.x = this.radius;
             this.vel.x = -this.vel.x;
@@ -107,17 +112,17 @@ class Game {
 
         // swept region of the blade
         if (this.pvs) {
-            drawPolygon(ctx, this.pvs, "red");
+            drawPolygon(ctx, this.pvs, SABER_COLOR);
         }
 
         // saber blade
         const end = this.computeEndPosition();
-        drawLine(ctx, this.pos, end, "red", 3);
+        drawLine(ctx, this.pos, end, SABER_COLOR, 3);
 
         // saber hilt
         const v1 = computePendulumPoint(this.pos, this.angle, -RADIUS);
         const v2 = computePendulumPoint(this.pos, this.angle, RADIUS);
-        drawLine(ctx, v1, v2, "black", 4);
+        drawLine(ctx, v1, v2, HILT_COLOR, 4);
 
         this.ball.draw(ctx);
     }
@@ -201,7 +206,6 @@ function main() {
     canvas.height = w;
 
     let started = false;
-    let mouseDown = false;
 
     let game = new Game(canvas.width, canvas.height);
     let target = Vec2.zero();
@@ -217,6 +221,30 @@ function main() {
         if (!started && target.subtract(game.pos).length() <= RADIUS) {
             started = true;
         }
+    });
+
+    // alternative touch controls
+    const rect = canvas.getBoundingClientRect();
+    canvas.addEventListener("touchstart", event => {
+        event.preventDefault();
+
+        started = true;
+        const x = event.changedTouches[0].clientX - rect.left;
+        const y = event.changedTouches[0].clientY - rect.top;
+        target = new Vec2(x, y);
+
+        // reset saber to be wherever the touch point is
+        game.pos = target;
+        game.vel = Vec2.zero();
+    });
+    canvas.addEventListener("touchmove", event => {
+        event.preventDefault();
+        const x = event.changedTouches[0].clientX - rect.left;
+        const y = event.changedTouches[0].clientY - rect.top;
+        target = new Vec2(x, y);
+
+        // multi-finger touch does a grab
+        game.grab = event.touches.length > 1;
     });
 
     let lastTime = Date.now();
