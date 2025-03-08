@@ -16,7 +16,7 @@ export class Vec2 {
         return new Vec2(s * this.x, s * this.y);
     }
 
-    negate(s) {
+    negate() {
         return new Vec2(-this.x, -this.y);
     }
 
