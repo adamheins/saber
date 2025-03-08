@@ -1,0 +1,13 @@
+{
+  "name": "saber",
+  "version": "0.1.0",
+  "description": "Relieve stress by swinging around a saber.",
+  "scripts": {},
+  "author": "Adam Heins <mail@adamheins.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.30.1"
+  },
+  "dependencies": {}
+}

@@ -1,3 +1,7 @@
+import { drawLine, drawCircle, drawPolygon } from "./gui";
+import { Vec2, wrapToPi } from "./math";
+import { windQuad, quadSegmentIntersect } from "./geometry";
+
 const TIMESTEP = 1 / 60;
 
 const LENGTH = 100;
@@ -8,111 +12,6 @@ const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
 
-
-function drawCircle(ctx, position, radius, color, fill=true) {
-    ctx.beginPath();
-    ctx.arc(position.x, position.y, radius, 0, 2 * Math.PI);
-    if (fill) {
-        ctx.fillStyle = color;
-        ctx.fill();
-    } else {
-        ctx.strokeStyle = color;
-        ctx.stroke();
-    }
-}
-
-function drawPolygon(ctx, vertices, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(vertices[0].x, vertices[0].y);
-    for (let i = 1; i < vertices.length; i++) {
-        ctx.lineTo(vertices[i].x, vertices[i].y);
-    }
-    ctx.closePath();
-    ctx.fill();
-}
-
-
-function drawLine(ctx, start, end, color, width) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-}
-
-
-function wrapToPi(x) {
-    // Wrap a value to [-pi, pi]
-    while (x > Math.PI) {
-        x -= 2 * Math.PI;
-    }
-    while (x < -Math.PI) {
-        x += 2 * Math.PI;
-    }
-    return x;
-}
-
-
-class Vec2 {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-    }
-
-    static zero() {
-        return new Vec2(0, 0);
-    }
-
-    array() {
-        return [this.x, this.y];
-    }
-
-    scale(s) {
-        return new Vec2(s * this.x, s * this.y);
-    }
-
-    negate(s) {
-        return new Vec2(-this.x, -this.y);
-    }
-
-    dot(other) {
-        return this.x * other.x + this.y * other.y;
-    }
-
-    add(other) {
-        return new Vec2(this.x + other.x, this.y + other.y);
-    }
-
-    subtract(other) {
-        return new Vec2(this.x - other.x, this.y - other.y);
-    }
-
-    rotate(angle) {
-        const s = Math.sin(angle);
-        const c = Math.cos(angle);
-        const x = c * this.x + s * this.y;
-        const y = -s * this.x + c * this.y;
-        return new Vec2(x, y);
-    }
-
-    orth() {
-        return new Vec2(this.y, -this.x);
-    }
-
-    length() {
-        return Math.sqrt(this.dot(this));
-    }
-
-    unit() {
-        const d = this.length();
-        if (d > 0) {
-            return this.scale(1 / d);
-        }
-        return this;
-    }
-}
 
 class Ball {
     constructor(pos, radius, xMax, yMax) {
@@ -173,79 +72,6 @@ function computeVelocityAlongPendulum(baseVel, angle, angVel, length) {
     const y = -length * Math.cos(angle);
     const r = new Vec2(-y, x);
     return baseVel.add(r.scale(angVel));
-}
-
-
-// Wind a set of four vertices into counter-clockwise order
-function windQuad(vertices) {
-    const v1 = vertices[0];
-    const v2 = vertices[1];
-    const v3 = vertices[2];
-    const v4 = vertices[3];
-
-    // inward-facing normal
-    const n12 = v2.subtract(v1).orth();
-    const d3 = n12.dot(v3.subtract(v1));
-    const d4 = n12.dot(v4.subtract(v1));
-
-    if (d3 >= 0 && d4 >= 0) {
-        // v2 is next
-        const n23 = v3.subtract(v2).orth();
-        if (n23.dot(v4.subtract(v2)) >= 0) {
-            return [v1, v2, v3, v4];
-        } else {
-            return [v1, v2, v4, v3];
-        }
-    } else if (d3 <= 0 && d4 <= 0) {
-        // v2 is last
-        const n13 = v3.subtract(v1).orth();
-        if (n13.dot(v4.subtract(v1)) >= 0) {
-            return [v1, v3, v4, v2];
-        } else {
-            return [v1, v4, v3, v2];
-        }
-    } else {
-        // v2 is the middle
-        if (d3 > d4) {
-            return [v1, v4, v2, v3];
-        } else {
-            return [v1, v3, v2, v4];
-        }
-    }
-}
-
-function projectOnAxis(vertices, direction, origin) {
-    const values = vertices.map(v => v.subtract(origin).dot(direction));
-    return [Math.min(...values), Math.max(...values)];
-}
-
-function quadSegmentIntersect(quad, seg, radius) {
-    // use separating axis theorem (SAT): the two shapes are not intersecting
-    // if and only if there exists a separating axis between them
-
-    // check segment normal
-    const s = seg[1].subtract(seg[0]);
-    let n = s.unit().orth();
-    let values = projectOnAxis(quad, n, seg[0]);
-    if (s.length() > 1e-3 && (values[0] > radius || values[1] < -radius)) {
-        return false;
-    }
-
-    // check quad normals
-    for (let i = 0; i < 3; i++) {
-        n = quad[i + 1].subtract(quad[i]).unit().orth().negate();
-        values = projectOnAxis(seg, n, quad[i]);
-        if (values[0] > radius) {
-            return false;
-        }
-    }
-    n = quad[0].subtract(quad[3]).unit().orth().negate();
-    values = projectOnAxis(seg, n, quad[3]);
-    if (values[0] > radius) {
-        return false;
-    }
-
-    return true;
 }
 
 
