@@ -277,9 +277,6 @@ function main() {
         const x = event.changedTouches[0].clientX - rect.left;
         const y = event.changedTouches[0].clientY - rect.top;
         target = new Vec2(x, y);
-
-        // multi-finger touch does a grab
-        game.grab = event.touches.length > 1;
     });
 
     let lastTime = Date.now();
