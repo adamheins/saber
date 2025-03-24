@@ -172,7 +172,7 @@ function computeSaberPoint(position, angle, length) {
 function computeVelocityAlongSaber(baseVel, angle, angVel, length) {
     const x = -length * Math.sin(angle);
     const y = -length * Math.cos(angle);
-    const r = new Vec2(y, -x);  // TODO?
+    const r = new Vec2(y, -x);
     return baseVel.add(r.scale(angVel));
 }
 
@@ -184,50 +184,56 @@ class Game {
 
         this.saber =
             new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), LENGTH);
-        this.ball = new Ball(new Vec2(100, 100), RADIUS, width, height);
+        this.balls = [
+            new Ball(new Vec2(100, 100), RADIUS, width, height),
+            new Ball(new Vec2(400, 100), RADIUS, width, height),
+        ];
     }
 
     draw(ctx) {
         ctx.clearRect(0, 0, this.width, this.height);
         this.saber.draw(ctx);
-        this.ball.draw(ctx);
+        this.balls.forEach(ball => ball.draw(ctx));
     }
 
     step(target, dt) {
         this.saber.updateVelocity(target, dt);
-        this.ball.updateVelocity(dt);
+        this.balls.forEach(ball => ball.updateVelocity(dt));
 
         const [pvs, u] = this.saber.computeSweptRegion(target, dt);
-        const bvs = this.ball.computeSweptRegion(dt);
 
-        const intersect = quadSegmentIntersect(pvs, bvs, this.ball.radius);
-        if (intersect) {
-            // contact distance along the saber
-            const dist = this.ball.pos.subtract(this.saber.pos).dot(u);
-            const vp = computeVelocityAlongSaber(
-                this.saber.vel, this.saber.angle, this.saber.angVel, dist);
+        this.balls.forEach(ball => {
+            const bvs = ball.computeSweptRegion(dt);
 
-            // make normal point in direction of motion
-            let n = u.orth();
-            let vpn = n.dot(vp);
-            if (vpn < 0) {
-                n = n.negate();
-                vpn = -vpn;
+            const intersect = quadSegmentIntersect(pvs, bvs, ball.radius);
+            if (intersect) {
+                // contact distance along the saber
+                const dist = ball.pos.subtract(this.saber.pos).dot(u);
+                const vp = computeVelocityAlongSaber(
+                    this.saber.vel, this.saber.angle, this.saber.angVel, dist);
+
+                // make normal point in direction of motion
+                let n = u.orth();
+                let vpn = n.dot(vp);
+                if (vpn < 0) {
+                    n = n.negate();
+                    vpn = -vpn;
+                }
+
+                // ball velocity along the normal direction takes on the saber
+                // velocity if it is less
+                const vbn = n.dot(ball.vel);
+                if (vbn < vpn) {
+                    const vu = u.scale(u.dot(ball.vel));
+                    const vn = n.scale(vpn);
+                    ball.vel = vu.add(vn);
+                }
             }
-
-            // ball velocity along the normal direction takes on the saber
-            // velocity if it is less
-            const vbn = n.dot(this.ball.vel);
-            if (vbn < vpn) {
-                const vu = u.scale(u.dot(this.ball.vel));
-                const vn = n.scale(vpn);
-                this.ball.vel = vu.add(vn);
-            }
-        }
+        });
 
         // update positions
         this.saber.updatePosition(target, dt);
-        this.ball.updatePosition(dt);
+        this.balls.forEach(ball => ball.updatePosition(dt));
     }
 }
 
