@@ -4,6 +4,9 @@ import {Vec2, wrapToPi} from './math';
 
 const TIMESTEP = 1 / 60;
 
+const MIN_NUM_BALLS = 0;
+const MAX_NUM_BALLS = 10;
+
 const LENGTH = 100;
 const GRAVITY = 500;
 const DRAG = 2;
@@ -27,14 +30,23 @@ class Ball {
 
         this.xMax = xMax;
         this.yMax = yMax;
+
+        this.enabled = true;
     }
 
     draw(ctx) {
+        if (!this.enabled) {
+            return;
+        }
         drawCircle(ctx, this.lastPos, this.radius, BALL_COLOR);
         drawCircle(ctx, this.pos, this.radius, BALL_COLOR);
     }
 
     updateVelocity(dt) {
+        if (!this.enabled) {
+            return;
+        }
+
         // don't leave the screen
         if (this.pos.x < this.radius) {
             this.pos.x = this.radius;
@@ -57,6 +69,10 @@ class Ball {
     }
 
     updatePosition(dt) {
+        if (!this.enabled) {
+            return;
+        }
+
         this.lastPos = this.pos;
         this.pos = this.pos.add(this.vel.scale(dt));
     }
@@ -184,10 +200,20 @@ class Game {
 
         this.saber =
             new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), LENGTH);
-        this.balls = [
-            new Ball(new Vec2(100, 100), RADIUS, width, height),
-            new Ball(new Vec2(400, 100), RADIUS, width, height),
-        ];
+
+        // we keep the maximum possible of balls, but just don't update or
+        // render the disabled ones
+        this.numBalls = 1;
+        this.balls = [];
+        for (let i = 0; i < MAX_NUM_BALLS; ++i) {
+            const x = RADIUS + Math.random() * (width - 2 * RADIUS);
+            const y = RADIUS + Math.random() * height * 0.5;
+            let ball = new Ball(new Vec2(x, y), RADIUS, width, height);
+            if (i >= this.numBalls) {
+                ball.enabled = false;
+            }
+            this.balls.push(ball);
+        }
     }
 
     draw(ctx) {
@@ -203,6 +229,9 @@ class Game {
         const [pvs, u] = this.saber.computeSweptRegion(target, dt);
 
         this.balls.forEach(ball => {
+            if (!ball.enabled) {
+                return;
+            }
             const bvs = ball.computeSweptRegion(dt);
 
             const intersect = quadSegmentIntersect(pvs, bvs, ball.radius);
@@ -241,6 +270,9 @@ function main() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
+    const moreButton = document.getElementById('more');
+    const lessButton = document.getElementById('less');
+
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
     canvas.width = w;
@@ -250,6 +282,24 @@ function main() {
 
     let game = new Game(canvas.width, canvas.height);
     let target = Vec2.zero();
+
+    moreButton.addEventListener('click', event => {
+        if (game.numBalls >= MAX_NUM_BALLS) {
+            return;
+        }
+        game.balls[game.numBalls].enabled = true;
+        game.numBalls++;
+        game.draw(ctx);
+    });
+
+    lessButton.addEventListener('click', event => {
+        if (game.numBalls <= MIN_NUM_BALLS) {
+            return;
+        }
+        game.numBalls--;
+        game.balls[game.numBalls].enabled = false;
+        game.draw(ctx);
+    });
 
     canvas.addEventListener('mousedown', event => {
         game.saber.grab = true;
