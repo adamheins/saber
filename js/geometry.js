@@ -49,12 +49,17 @@ export function quadSegmentIntersect(quad, seg, radius) {
     const s = seg[1].subtract(seg[0]);
     let n = s.unit().orth();
     let values = projectOnAxis(quad, n, seg[0]);
+    // only check if the segment has non-negligible length (otherwise it is
+    // basically a point)
+    // check in both directions, which is equivalent to checking both
+    // outward-facing normals of the segment
     if (s.length() > 1e-3 && (values[0] > radius || values[1] < -radius)) {
         return false;
     }
 
     // check quad normals
     for (let i = 0; i < 3; i++) {
+        // negate to get outward-facing normals
         n = quad[i + 1].subtract(quad[i]).unit().orth().negate();
         values = projectOnAxis(seg, n, quad[i]);
         if (values[0] > radius) {

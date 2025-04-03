@@ -9,13 +9,14 @@ const MAX_NUM_BALLS = 10;
 
 const LENGTH = 100;
 const GRAVITY = 500;
-const DRAG = 2;
+const SABER_DRAG = 2;  // saber drag is viscous (linear)
+const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
 
 const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
 
-const BALL_COLOR = 'blue';
+const BALL_COLORS = ['blue', 'red', 'green'];
 const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
 
@@ -32,14 +33,21 @@ class Ball {
         this.yMax = yMax;
 
         this.enabled = true;
+        this.colorIdx = 0;
+        this.inCollision = false;
     }
 
     draw(ctx) {
         if (!this.enabled) {
             return;
         }
-        drawCircle(ctx, this.lastPos, this.radius, BALL_COLOR);
-        drawCircle(ctx, this.pos, this.radius, BALL_COLOR);
+        const color = BALL_COLORS[this.colorIdx];
+        drawCircle(ctx, this.lastPos, this.radius, color);
+        drawCircle(ctx, this.pos, this.radius, color);
+    }
+
+    changeColor() {
+        this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
     }
 
     updateVelocity(dt) {
@@ -64,7 +72,9 @@ class Ball {
             this.vel.y = -this.vel.y;
         }
 
-        const acc = (new Vec2(0, GRAVITY)).subtract(this.vel.scale(DRAG));
+        // const drag = this.vel.scale(DRAG);
+        const drag = this.vel.scale(this.vel.length() * BALL_DRAG);
+        const acc = (new Vec2(0, GRAVITY)).subtract(drag);
         this.vel = this.vel.add(acc.scale(dt));
     }
 
@@ -137,7 +147,7 @@ class Saber {
             let angAcc = (acc.x * Math.cos(this.angle) +
                           (GRAVITY - acc.y) * Math.sin(this.angle)) /
                     this.length -
-                DRAG * this.angVel;
+                SABER_DRAG * this.angVel;
             this.angVel += dt * angAcc;
         } else {
             this.angVel = 0;
@@ -214,6 +224,8 @@ class Game {
             }
             this.balls.push(ball);
         }
+
+        this.changeColorOnHit = false;
     }
 
     draw(ctx) {
@@ -257,7 +269,12 @@ class Game {
                     const vn = n.scale(vpn);
                     ball.vel = vu.add(vn);
                 }
+
+                if (this.changeColorOnHit && !ball.inCollision) {
+                    ball.changeColor();
+                }
             }
+            ball.inCollision = intersect;
         });
 
         // update positions
@@ -272,6 +289,7 @@ function main() {
 
     const moreButton = document.getElementById('more');
     const lessButton = document.getElementById('less');
+    const colorCheckbox = document.getElementById('colors');
 
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
@@ -299,6 +317,12 @@ function main() {
         game.numBalls--;
         game.balls[game.numBalls].enabled = false;
         game.draw(ctx);
+    });
+
+    // enable/disable changing the ball color when hit by the saber
+    game.changeColorOnHit = colorCheckbox.checked;
+    colorCheckbox.addEventListener('change', event => {
+        game.changeColorOnHit = colorCheckbox.checked;
     });
 
     canvas.addEventListener('mousedown', event => {
