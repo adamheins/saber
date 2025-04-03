@@ -253,20 +253,23 @@ class Game {
                 const vp = computeVelocityAlongSaber(
                     this.saber.vel, this.saber.angle, this.saber.angVel, dist);
 
-                // make normal point in direction of motion
+                // make normal point from the saber toward the ball
                 let n = u.orth();
-                let vpn = n.dot(vp);
-                if (vpn < 0) {
+                if (ball.pos.subtract(this.saber.pos).dot(n) < 0) {
                     n = n.negate();
-                    vpn = -vpn;
                 }
 
-                // ball velocity along the normal direction takes on the saber
-                // velocity if it is less
+                // velocity of pendulum along normal direction
+                let vpn = n.dot(vp);
+
+                // if the ball velocity along the normal direction is less than
+                // the saber velocity, it takes the max of the saber velocity
+                // or the negatation of its own velocity (i.e., it elastically
+                // collides with the saber)
                 const vbn = n.dot(ball.vel);
                 if (vbn < vpn) {
                     const vu = u.scale(u.dot(ball.vel));
-                    const vn = n.scale(vpn);
+                    const vn = n.scale(Math.max(vpn, -vbn));
                     ball.vel = vu.add(vn);
                 }
 
