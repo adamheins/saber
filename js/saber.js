@@ -16,9 +16,42 @@ const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
 
-const BALL_COLORS = ['blue', 'red', 'green'];
+const BALL_COLORS = ['blue', 'red', 'green', 'black'];
 const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
+
+
+class Bumper {
+    constructor(colorIdx, normal, sideLength, xMax, yMax) {
+        this.colorIdx = colorIdx;
+        this.normal = normal.unit();
+        this.orth = this.normal.orth();
+        const s = sideLength;
+        if (this.normal.x < 0) {
+            if (this.normal.y < 0) {
+                this.vertices = [new Vec2(0, s), new Vec2(s, 0), new Vec2(0, 0)];
+            } else {
+                this.vertices = [new Vec2(0, yMax - s), new Vec2(0, yMax), new Vec2(s, yMax)];
+            }
+        } else {
+            if (this.normal.y < 0) {
+                this.vertices = [new Vec2(xMax - s, 0), new Vec2(xMax, s), new Vec2(xMax, 0)];
+            } else {
+                this.vertices = [new Vec2(xMax - s, yMax), new Vec2(xMax, yMax), new Vec2(xMax, yMax - s)];
+            }
+        }
+        this.origin = this.vertices[0];
+    }
+
+    draw(ctx) {
+        drawPolygon(ctx, this.vertices, BALL_COLORS[this.colorIdx]);
+    }
+}
+
+
+function randInt(max) {
+  return Math.floor(Math.random() * max);
+}
 
 
 class Ball {
@@ -47,29 +80,74 @@ class Ball {
     }
 
     changeColor() {
-        this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
+        // this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
+        let newIdx = randInt(BALL_COLORS.length);
+        while (newIdx === this.colorIdx) {
+            newIdx = randInt(BALL_COLORS.length);
+        }
+        this.colorIdx = newIdx;
     }
 
-    updateVelocity(dt) {
+    collide(bumpers) {
         if (!this.enabled) {
-            return;
+            return 0;
+        }
+
+        // collide with bumpers
+        let score = 0;
+        for (let i = 0; i < bumpers.length; i++) {
+            let bumper = bumpers[i];
+            const delta = this.pos.subtract(bumper.origin);
+            const d = delta.dot(bumper.normal) + this.radius;
+            if (d > 0) {
+                this.pos = this.pos.subtract(bumper.normal.scale(d));
+                if (this.vel.dot(bumper.normal) > 0) {
+                    const vn = bumper.normal.scale(this.vel.dot(bumper.normal));
+                    const vu = bumper.orth.scale(this.vel.dot(bumper.orth));
+                    this.vel = vn.negate().add(vu);
+                }
+                if (bumper.colorIdx === this.colorIdx) {
+                    score = 1;
+                } else {
+                    score = -1;
+                }
+                this.changeColor();
+                // can only collide with one bumper at a time
+                break;
+            }
         }
 
         // don't leave the screen
         if (this.pos.x < this.radius) {
             this.pos.x = this.radius;
-            this.vel.x = -this.vel.x;
+            if (this.vel.x < 0) {
+                this.vel.x = -this.vel.x;
+            }
         } else if (this.pos.x > this.xMax - this.radius) {
             this.pos.x = this.xMax - this.radius;
-            this.vel.x = -this.vel.x;
+            if (this.vel.x > 0) {
+                this.vel.x = -this.vel.x;
+            }
         }
 
         if (this.pos.y < this.radius) {
             this.pos.y = this.radius;
-            this.vel.y = -this.vel.y;
+            if (this.vel.y < 0) {
+                this.vel.y = -this.vel.y;
+            }
         } else if (this.pos.y > this.yMax - this.radius) {
             this.pos.y = this.yMax - this.radius;
-            this.vel.y = -this.vel.y;
+            if (this.vel.y > 0) {
+                this.vel.y = -this.vel.y;
+            }
+        }
+
+        return score;
+    }
+
+    updateVelocity(dt) {
+        if (!this.enabled) {
+            return;
         }
 
         // const drag = this.vel.scale(DRAG);
@@ -118,7 +196,6 @@ class Saber {
     computeEndPosition() {
         return computeSaberPoint(this.pos, this.angle, this.length);
     }
-
 
     draw(ctx) {
         // swept region of the blade
@@ -226,17 +303,30 @@ class Game {
         }
 
         this.changeColorOnHit = false;
+
+        this.bumpers = [
+            new Bumper(0, new Vec2(-1, -1), 100, width, height),
+            new Bumper(1, new Vec2(-1, 1), 100, width, height),
+            new Bumper(2, new Vec2(1, 1), 100, width, height),
+            new Bumper(3, new Vec2(1, -1), 100, width, height),
+        ];
+        this.score = 0;
     }
 
     draw(ctx) {
         ctx.clearRect(0, 0, this.width, this.height);
         this.saber.draw(ctx);
         this.balls.forEach(ball => ball.draw(ctx));
+        this.bumpers.forEach(bumper => bumper.draw(ctx));
     }
 
     step(target, dt) {
         this.saber.updateVelocity(target, dt);
-        this.balls.forEach(ball => ball.updateVelocity(dt));
+        for (let i = 0; i < this.balls.length; i++) {
+            this.score += this.balls[i].collide(this.bumpers);
+            this.balls[i].updateVelocity(dt);
+            console.log(this.score);
+        }
 
         const [pvs, u] = this.saber.computeSweptRegion(target, dt);
 
@@ -292,7 +382,9 @@ function main() {
 
     const moreButton = document.getElementById('more');
     const lessButton = document.getElementById('less');
-    const colorCheckbox = document.getElementById('colors');
+    // const colorCheckbox = document.getElementById('colors');
+
+    const scoreText = document.getElementById('score');
 
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
@@ -323,10 +415,10 @@ function main() {
     });
 
     // enable/disable changing the ball color when hit by the saber
-    game.changeColorOnHit = colorCheckbox.checked;
-    colorCheckbox.addEventListener('change', event => {
-        game.changeColorOnHit = colorCheckbox.checked;
-    });
+    // game.changeColorOnHit = colorCheckbox.checked;
+    // colorCheckbox.addEventListener('change', event => {
+    //     game.changeColorOnHit = colorCheckbox.checked;
+    // });
 
     canvas.addEventListener('mousedown', event => {
         game.saber.grab = true;
@@ -371,6 +463,7 @@ function main() {
 
         if (started) {
             game.step(target, dt / 1000);
+            scoreText.innerHTML = game.score;
         }
         game.draw(ctx);
     }
