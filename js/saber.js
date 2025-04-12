@@ -9,7 +9,7 @@ const MAX_NUM_BALLS = 10;
 
 const LENGTH = 100;
 const GRAVITY = 500;
-const SABER_DRAG = 2;  // saber drag is viscous (linear)
+const SABER_DRAG = 2;     // saber drag is viscous (linear)
 const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
 
 const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
@@ -22,35 +22,43 @@ const HILT_COLOR = 'black';
 
 
 class Bumper {
-    constructor(colorIdx, normal, sideLength, xMax, yMax) {
-        this.colorIdx = colorIdx;
+    constructor(normal, vertices) {
         this.normal = normal.unit();
         this.orth = this.normal.orth();
-        const s = sideLength;
-        if (this.normal.x < 0) {
-            if (this.normal.y < 0) {
-                this.vertices = [new Vec2(0, s), new Vec2(s, 0), new Vec2(0, 0)];
-            } else {
-                this.vertices = [new Vec2(0, yMax - s), new Vec2(0, yMax), new Vec2(s, yMax)];
-            }
-        } else {
-            if (this.normal.y < 0) {
-                this.vertices = [new Vec2(xMax - s, 0), new Vec2(xMax, s), new Vec2(xMax, 0)];
-            } else {
-                this.vertices = [new Vec2(xMax - s, yMax), new Vec2(xMax, yMax), new Vec2(xMax, yMax - s)];
-            }
-        }
+        this.vertices = vertices;
+        // const s = sideLength;
+        // if (this.normal.x < 0) {
+        //     if (this.normal.y < 0) {
+        //         this.vertices =
+        //             [new Vec2(0, s), new Vec2(s, 0), new Vec2(0, 0)];
+        //     } else {
+        //         this.vertices = [
+        //             new Vec2(0, yMax - s), new Vec2(0, yMax), new Vec2(s, yMax)
+        //         ];
+        //     }
+        // } else {
+        //     if (this.normal.y < 0) {
+        //         this.vertices = [
+        //             new Vec2(xMax - s, 0), new Vec2(xMax, s), new Vec2(xMax, 0)
+        //         ];
+        //     } else {
+        //         this.vertices = [
+        //             new Vec2(xMax - s, yMax), new Vec2(xMax, yMax),
+        //             new Vec2(xMax, yMax - s)
+        //         ];
+        //     }
+        // }
         this.origin = this.vertices[0];
     }
 
     draw(ctx) {
-        drawPolygon(ctx, this.vertices, BALL_COLORS[this.colorIdx]);
+        drawPolygon(ctx, this.vertices, "black");
     }
 }
 
 
 function randInt(max) {
-  return Math.floor(Math.random() * max);
+    return Math.floor(Math.random() * max);
 }
 
 
@@ -68,25 +76,35 @@ class Ball {
         this.enabled = true;
         this.colorIdx = 0;
         this.inCollision = false;
+        this.health = 3;
     }
 
     draw(ctx) {
         if (!this.enabled) {
             return;
         }
-        const color = BALL_COLORS[this.colorIdx];
+        const color = BALL_COLORS[this.health];
         drawCircle(ctx, this.lastPos, this.radius, color);
         drawCircle(ctx, this.pos, this.radius, color);
     }
 
-    changeColor() {
-        // this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
-        let newIdx = randInt(BALL_COLORS.length);
-        while (newIdx === this.colorIdx) {
-            newIdx = randInt(BALL_COLORS.length);
-        }
-        this.colorIdx = newIdx;
+    respawn() {
+        this.health = 3;
+        this.pos.x = RADIUS + Math.random() * (this.xMax - 2 * RADIUS);
+        this.pos.y = RADIUS + Math.random() * this.yMax * 0.5;
+        this.lastPos = this.pos;
+        this.vel.x = 1000 * (Math.random() - 0.5);
+        this.vel.y = 1000 * (Math.random() - 0.5);
     }
+
+    // changeColor() {
+    //     // this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
+    //     let newIdx = randInt(BALL_COLORS.length);
+    //     while (newIdx === this.colorIdx) {
+    //         newIdx = randInt(BALL_COLORS.length);
+    //     }
+    //     this.colorIdx = newIdx;
+    // }
 
     collide(bumpers) {
         if (!this.enabled) {
@@ -106,12 +124,12 @@ class Ball {
                     const vu = bumper.orth.scale(this.vel.dot(bumper.orth));
                     this.vel = vn.negate().add(vu);
                 }
-                if (bumper.colorIdx === this.colorIdx) {
-                    score = 1;
-                } else {
-                    score = -1;
-                }
-                this.changeColor();
+                // if (bumper.colorIdx === this.colorIdx) {
+                //     score = 1;
+                // } else {
+                //     score = -1;
+                // }
+                // this.changeColor();
                 // can only collide with one bumper at a time
                 break;
             }
@@ -135,11 +153,14 @@ class Ball {
             if (this.vel.y < 0) {
                 this.vel.y = -this.vel.y;
             }
-        } else if (this.pos.y > this.yMax - this.radius) {
-            this.pos.y = this.yMax - this.radius;
-            if (this.vel.y > 0) {
-                this.vel.y = -this.vel.y;
-            }
+        // } else if (this.pos.y > this.yMax - this.radius) {
+        //     this.pos.y = this.yMax - this.radius;
+        //     if (this.vel.y > 0) {
+        //         this.vel.y = -this.vel.y;
+        //     }
+        // }
+        } else if (this.pos.y > this.yMax + this.radius) {
+            this.respawn();
         }
 
         return score;
@@ -215,6 +236,7 @@ class Saber {
 
     updateVelocity(target, dt) {
         // compute new vel
+        // TODO should be do some filtering here?
         let newVel = target.subtract(this.pos).scale(1. / dt);
         let acc = newVel.subtract(this.vel).scale(1. / dt);
         this.vel = newVel;
@@ -304,11 +326,14 @@ class Game {
 
         this.changeColorOnHit = false;
 
+        const bw = 200;
+        const bh = 100;
+        const bumpVert1 = [new Vec2(0, height - bh), new Vec2(0, height), new Vec2(bw, height)];
+        const bumpVert2 = [new Vec2(width - bw, height), new Vec2(width, height), new Vec2(width, height - bh)];
+
         this.bumpers = [
-            new Bumper(0, new Vec2(-1, -1), 100, width, height),
-            new Bumper(1, new Vec2(-1, 1), 100, width, height),
-            new Bumper(2, new Vec2(1, 1), 100, width, height),
-            new Bumper(3, new Vec2(1, -1), 100, width, height),
+            new Bumper(new Vec2(-1, 2), bumpVert1),
+            new Bumper(new Vec2(1, 2), bumpVert2),
         ];
         this.score = 0;
     }
@@ -325,7 +350,6 @@ class Game {
         for (let i = 0; i < this.balls.length; i++) {
             this.score += this.balls[i].collide(this.bumpers);
             this.balls[i].updateVelocity(dt);
-            console.log(this.score);
         }
 
         const [pvs, u] = this.saber.computeSweptRegion(target, dt);
@@ -350,11 +374,11 @@ class Game {
                 }
 
                 // velocity of pendulum along normal direction
-                let vpn = n.dot(vp);
+                const vpn = n.dot(vp);
 
                 // if the ball velocity along the normal direction is less than
                 // the saber velocity, it takes the max of the saber velocity
-                // or the negatation of its own velocity (i.e., it elastically
+                // or the negation of its own velocity (i.e., it elastically
                 // collides with the saber)
                 const vbn = n.dot(ball.vel);
                 if (vbn < vpn) {
@@ -362,9 +386,17 @@ class Game {
                     const vn = n.scale(Math.max(vpn, -vbn));
                     ball.vel = vu.add(vn);
                 }
+                const hitSpeed = Math.abs(vpn - vbn);
 
-                if (this.changeColorOnHit && !ball.inCollision) {
-                    ball.changeColor();
+                // if (this.changeColorOnHit && !ball.inCollision) {
+                //     ball.changeColor();
+                // }
+                if ((!ball.inCollision) && (hitSpeed >= 1000)) {
+                    ball.health--;
+                    if (ball.health < 0) {
+                        this.score++;
+                        ball.respawn();
+                    }
                 }
             }
             ball.inCollision = intersect;
