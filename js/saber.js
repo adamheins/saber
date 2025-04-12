@@ -15,8 +15,9 @@ const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
 const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
+const DYING_TIME = 0.5;
 
-const BALL_COLORS = ['blue', 'red', 'green', 'black'];
+const BALL_COLORS = ['green', 'blue', 'red'];
 const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
 
@@ -26,28 +27,6 @@ class Bumper {
         this.normal = normal.unit();
         this.orth = this.normal.orth();
         this.vertices = vertices;
-        // const s = sideLength;
-        // if (this.normal.x < 0) {
-        //     if (this.normal.y < 0) {
-        //         this.vertices =
-        //             [new Vec2(0, s), new Vec2(s, 0), new Vec2(0, 0)];
-        //     } else {
-        //         this.vertices = [
-        //             new Vec2(0, yMax - s), new Vec2(0, yMax), new Vec2(s, yMax)
-        //         ];
-        //     }
-        // } else {
-        //     if (this.normal.y < 0) {
-        //         this.vertices = [
-        //             new Vec2(xMax - s, 0), new Vec2(xMax, s), new Vec2(xMax, 0)
-        //         ];
-        //     } else {
-        //         this.vertices = [
-        //             new Vec2(xMax - s, yMax), new Vec2(xMax, yMax),
-        //             new Vec2(xMax, yMax - s)
-        //         ];
-        //     }
-        // }
         this.origin = this.vertices[0];
     }
 
@@ -72,42 +51,46 @@ class Ball {
 
         this.xMax = xMax;
         this.yMax = yMax;
+        this.screenCenter = new Vec2(xMax / 2, yMax / 2);
 
         this.enabled = true;
         this.colorIdx = 0;
         this.inCollision = false;
         this.health = 3;
+        this.dying = false;
+        this.dyingTime = 0;
     }
 
     draw(ctx) {
         if (!this.enabled) {
             return;
         }
-        const color = BALL_COLORS[this.health];
+        let color = BALL_COLORS[this.health - 1];
+        if (this.dying) {
+            color = "rgba(100, 100, 100, " + (1 - this.dyingTime / DYING_TIME) + ")";
+        }
+
         drawCircle(ctx, this.lastPos, this.radius, color);
         drawCircle(ctx, this.pos, this.radius, color);
     }
 
     respawn() {
+        this.dying = false;
+        this.dyingTime = 0;
         this.health = 3;
-        this.pos.x = RADIUS + Math.random() * (this.xMax - 2 * RADIUS);
-        this.pos.y = RADIUS + Math.random() * this.yMax * 0.5;
+        this.inCollision = false;
+
+        do {
+            this.pos.x = RADIUS + Math.random() * (this.xMax - 2 * RADIUS);
+            this.pos.y = RADIUS + Math.random() * this.yMax * 0.5;
+        } while (this.pos.subtract(this.screenCenter).length() < this.xMax / 3);
         this.lastPos = this.pos;
-        this.vel.x = 1000 * (Math.random() - 0.5);
-        this.vel.y = 1000 * (Math.random() - 0.5);
+        this.vel.x = 2000 * (Math.random() - 0.5);
+        this.vel.y = 2000 * (Math.random() - 0.5);
     }
 
-    // changeColor() {
-    //     // this.colorIdx = (this.colorIdx + 1) % BALL_COLORS.length;
-    //     let newIdx = randInt(BALL_COLORS.length);
-    //     while (newIdx === this.colorIdx) {
-    //         newIdx = randInt(BALL_COLORS.length);
-    //     }
-    //     this.colorIdx = newIdx;
-    // }
-
     collide(bumpers) {
-        if (!this.enabled) {
+        if (!this.enabled || this.dying) {
             return 0;
         }
 
@@ -124,13 +107,6 @@ class Ball {
                     const vu = bumper.orth.scale(this.vel.dot(bumper.orth));
                     this.vel = vn.negate().add(vu);
                 }
-                // if (bumper.colorIdx === this.colorIdx) {
-                //     score = 1;
-                // } else {
-                //     score = -1;
-                // }
-                // this.changeColor();
-                // can only collide with one bumper at a time
                 break;
             }
         }
@@ -153,12 +129,6 @@ class Ball {
             if (this.vel.y < 0) {
                 this.vel.y = -this.vel.y;
             }
-        // } else if (this.pos.y > this.yMax - this.radius) {
-        //     this.pos.y = this.yMax - this.radius;
-        //     if (this.vel.y > 0) {
-        //         this.vel.y = -this.vel.y;
-        //     }
-        // }
         } else if (this.pos.y > this.yMax + this.radius) {
             this.respawn();
         }
@@ -172,7 +142,12 @@ class Ball {
         }
 
         // const drag = this.vel.scale(DRAG);
-        const drag = this.vel.scale(this.vel.length() * BALL_DRAG);
+        // increase drag when dying
+        let c = BALL_DRAG;
+        if (this.dying) {
+            c *= 10;
+        }
+        const drag = this.vel.scale(this.vel.length() * c);
         const acc = (new Vec2(0, GRAVITY)).subtract(drag);
         this.vel = this.vel.add(acc.scale(dt));
     }
@@ -180,6 +155,12 @@ class Ball {
     updatePosition(dt) {
         if (!this.enabled) {
             return;
+        }
+        if (this.dying) {
+            this.dyingTime += dt;
+            if (this.dyingTime > DYING_TIME) {
+                this.respawn();
+            }
         }
 
         this.lastPos = this.pos;
@@ -236,7 +217,7 @@ class Saber {
 
     updateVelocity(target, dt) {
         // compute new vel
-        // TODO should be do some filtering here?
+        // TODO should we do some filtering here?
         let newVel = target.subtract(this.pos).scale(1. / dt);
         let acc = newVel.subtract(this.vel).scale(1. / dt);
         this.vel = newVel;
@@ -326,14 +307,14 @@ class Game {
 
         this.changeColorOnHit = false;
 
-        const bw = 200;
-        const bh = 100;
+        const bw = 0.4 * width;
+        const bh = 0.15 * height;
         const bumpVert1 = [new Vec2(0, height - bh), new Vec2(0, height), new Vec2(bw, height)];
         const bumpVert2 = [new Vec2(width - bw, height), new Vec2(width, height), new Vec2(width, height - bh)];
 
         this.bumpers = [
-            new Bumper(new Vec2(-1, 2), bumpVert1),
-            new Bumper(new Vec2(1, 2), bumpVert2),
+            new Bumper(new Vec2(-bh, bw), bumpVert1),
+            new Bumper(new Vec2(bh, bw), bumpVert2),
         ];
         this.score = 0;
     }
@@ -355,7 +336,7 @@ class Game {
         const [pvs, u] = this.saber.computeSweptRegion(target, dt);
 
         this.balls.forEach(ball => {
-            if (!ball.enabled) {
+            if (!ball.enabled || ball.dying) {
                 return;
             }
             const bvs = ball.computeSweptRegion(dt);
@@ -381,22 +362,24 @@ class Game {
                 // or the negation of its own velocity (i.e., it elastically
                 // collides with the saber)
                 const vbn = n.dot(ball.vel);
+
+                const hitSpeed = Math.abs(vpn - vbn);
+                if ((!ball.inCollision) && (hitSpeed >= 1000)) {
+                    ball.health--;
+                    if (ball.health <= 0) {
+                        this.score++;
+                        ball.dying = true;
+                        let vx = 200 * (Math.random() - 0.5);
+                        let vy = 200 * (Math.random() - 0.5);
+                        ball.vel = ball.vel.add(new Vec2(vx, vy));
+                        return;
+                    }
+                }
+
                 if (vbn < vpn) {
                     const vu = u.scale(u.dot(ball.vel));
                     const vn = n.scale(Math.max(vpn, -vbn));
                     ball.vel = vu.add(vn);
-                }
-                const hitSpeed = Math.abs(vpn - vbn);
-
-                // if (this.changeColorOnHit && !ball.inCollision) {
-                //     ball.changeColor();
-                // }
-                if ((!ball.inCollision) && (hitSpeed >= 1000)) {
-                    ball.health--;
-                    if (ball.health < 0) {
-                        this.score++;
-                        ball.respawn();
-                    }
                 }
             }
             ball.inCollision = intersect;
