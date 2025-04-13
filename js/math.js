@@ -68,3 +68,8 @@ export function wrapToPi(x) {
     }
     return x;
 }
+
+
+export function randInt(max) {
+    return Math.floor(Math.random() * max);
+}

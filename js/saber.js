@@ -1,6 +1,6 @@
 import {quadSegmentIntersect, windQuad} from './geometry';
 import {drawCircle, drawLine, drawPolygon} from './gui';
-import {Vec2, wrapToPi} from './math';
+import {Vec2, wrapToPi, randInt} from './math';
 
 const TIMESTEP = 1 / 60;
 
@@ -15,11 +15,15 @@ const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
 const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 
 const RADIUS = 10;
-const DYING_TIME = 0.5;
+const DYING_TIME = 0.1;
+
+// speed required to damage a ball
+const DAMAGE_SPEED = 1000;
 
 const BALL_COLORS = ['green', 'blue', 'red'];
 const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
+const BUMPER_COLOR = 'rgb(100, 100, 100)';
 
 
 class Bumper {
@@ -31,13 +35,8 @@ class Bumper {
     }
 
     draw(ctx) {
-        drawPolygon(ctx, this.vertices, "black");
+        drawPolygon(ctx, this.vertices, BUMPER_COLOR);
     }
-}
-
-
-function randInt(max) {
-    return Math.floor(Math.random() * max);
 }
 
 
@@ -66,12 +65,16 @@ class Ball {
             return;
         }
         let color = BALL_COLORS[this.health - 1];
+        let radius = this.radius;
         if (this.dying) {
-            color = "rgba(100, 100, 100, " + (1 - this.dyingTime / DYING_TIME) + ")";
+            color = 'rgba(100, 100, 100, ' + (1 - this.dyingTime / DYING_TIME) +
+                ')';
+            radius = this.radius * (1 + 5 * this.dyingTime / DYING_TIME);
+        } else {
+            drawCircle(ctx, this.lastPos, this.radius, color);
         }
 
-        drawCircle(ctx, this.lastPos, this.radius, color);
-        drawCircle(ctx, this.pos, this.radius, color);
+        drawCircle(ctx, this.pos, radius, color);
     }
 
     respawn() {
@@ -305,12 +308,15 @@ class Game {
             this.balls.push(ball);
         }
 
-        this.changeColorOnHit = false;
-
         const bw = 0.4 * width;
         const bh = 0.15 * height;
-        const bumpVert1 = [new Vec2(0, height - bh), new Vec2(0, height), new Vec2(bw, height)];
-        const bumpVert2 = [new Vec2(width - bw, height), new Vec2(width, height), new Vec2(width, height - bh)];
+        const bumpVert1 = [
+            new Vec2(0, height - bh), new Vec2(0, height), new Vec2(bw, height)
+        ];
+        const bumpVert2 = [
+            new Vec2(width - bw, height), new Vec2(width, height),
+            new Vec2(width, height - bh)
+        ];
 
         this.bumpers = [
             new Bumper(new Vec2(-bh, bw), bumpVert1),
@@ -364,15 +370,15 @@ class Game {
                 const vbn = n.dot(ball.vel);
 
                 const hitSpeed = Math.abs(vpn - vbn);
-                if ((!ball.inCollision) && (hitSpeed >= 1000)) {
+                if ((!ball.inCollision) && (hitSpeed >= DAMAGE_SPEED)) {
                     ball.health--;
                     if (ball.health <= 0) {
                         this.score++;
                         ball.dying = true;
-                        let vx = 200 * (Math.random() - 0.5);
-                        let vy = 200 * (Math.random() - 0.5);
-                        ball.vel = ball.vel.add(new Vec2(vx, vy));
-                        return;
+                        // let vx = 200 * (Math.random() - 0.5);
+                        // let vy = 200 * (Math.random() - 0.5);
+                        // ball.vel = ball.vel.add(new Vec2(vx, vy));
+                        // return;
                     }
                 }
 
@@ -397,7 +403,6 @@ function main() {
 
     const moreButton = document.getElementById('more');
     const lessButton = document.getElementById('less');
-    // const colorCheckbox = document.getElementById('colors');
 
     const scoreText = document.getElementById('score');
 
@@ -428,12 +433,6 @@ function main() {
         game.balls[game.numBalls].enabled = false;
         game.draw(ctx);
     });
-
-    // enable/disable changing the ball color when hit by the saber
-    // game.changeColorOnHit = colorCheckbox.checked;
-    // colorCheckbox.addEventListener('change', event => {
-    //     game.changeColorOnHit = colorCheckbox.checked;
-    // });
 
     canvas.addEventListener('mousedown', event => {
         game.saber.grab = true;
@@ -470,11 +469,12 @@ function main() {
     });
 
     let lastTime = Date.now();
-    function loop() {
+    function loop(time) {
+        requestAnimationFrame(loop);
+
         // milliseconds
-        const now = Date.now();
-        const dt = now - lastTime;
-        lastTime = now;
+        const dt = time - lastTime;
+        lastTime = time;
 
         if (started) {
             game.step(target, dt / 1000);
@@ -482,7 +482,7 @@ function main() {
         }
         game.draw(ctx);
     }
-    setInterval(loop, 1000 * TIMESTEP);
+    requestAnimationFrame(loop);
 }
 
 
