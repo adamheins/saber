@@ -205,8 +205,8 @@ class Saber {
         drawLine(ctx, this.pos, end, SABER_COLOR, 3);
 
         // saber hilt
-        const v1 = computeSaberPoint(this.pos, this.angle, -RADIUS);
-        const v2 = computeSaberPoint(this.pos, this.angle, RADIUS);
+        const v1 = computeSaberPoint(this.pos, this.angle, -1.5*RADIUS);
+        const v2 = computeSaberPoint(this.pos, this.angle, 1.5*RADIUS);
         drawCircle(ctx, this.pos, RADIUS, 'rgba(100, 100, 100, 0.5)');
         drawLine(ctx, v1, v2, HILT_COLOR, 4);
     }
@@ -316,6 +316,7 @@ class Game {
             new Bumper(new Vec2(bh, bw), bumpVert2),
         ];
         this.score = 0;
+        this.lives = 3;
         this.done = false;
     }
 
@@ -341,8 +342,11 @@ class Game {
                 return;
             }
             if (this.saber.pos.subtract(ball.pos).length() < 2*RADIUS) {
-                this.done = true;
-                return;
+                this.lives--;
+                if (this.lives <= 0) {
+                    this.done = true;
+                    return;
+                }
             }
 
             const bvs = ball.computeSweptRegion(dt);
@@ -375,8 +379,14 @@ class Game {
                     if (ball.health <= 0) {
                         this.score++;
                         ball.dying = true;
-                        this.numBalls = Math.min(Math.floor(this.score / 10) + 1, MAX_NUM_BALLS);
-                        this.balls[this.numBalls - 1].enabled = true;
+                        if ((this.score % 10 === 0) && (this.numBalls < MAX_NUM_BALLS)) {
+                            this.balls[this.numBalls].enabled = true;
+                            this.numBalls++;
+                        }
+                        if ((this.score % 5 === 0) && (this.lives < 3)) {
+                            this.lives++;
+                        }
+                        // this.numBalls = Math.min(Math.floor(this.score / 10) + 1, MAX_NUM_BALLS);
                         // let vx = 200 * (Math.random() - 0.5);
                         // let vy = 200 * (Math.random() - 0.5);
                         // ball.vel = ball.vel.add(new Vec2(vx, vy));
@@ -407,6 +417,7 @@ function main() {
     const lessButton = document.getElementById('less');
 
     const scoreText = document.getElementById('score');
+    const livesText = document.getElementById('lives');
 
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
@@ -481,6 +492,7 @@ function main() {
         if (started && !game.done) {
             game.step(target, dt / 1000);
             scoreText.innerHTML = game.score;
+            livesText.innerHTML = game.lives;
         }
         game.draw(ctx);
     }
