@@ -7,7 +7,6 @@ const GRAVITY = 500;
 const MAX_LIVES = 3;
 const NEW_LIFE_EVERY_N_POINTS = 10;
 
-const SABER_LENGTH = 125;
 const SABER_DRAG = 2;  // saber drag is viscous (linear)
 const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
 const SABER_HURT_TIME = 1.0;
@@ -306,8 +305,13 @@ class Game {
         this.width = width;
         this.height = height;
 
+        // different length depending on screen size
+        let saberLength = 0.175 * width;
+        if (width < 500) {
+            saberLength = 0.25 * width;
+        }
         this.saber =
-            new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), SABER_LENGTH);
+            new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), saberLength);
 
         // we keep the maximum possible of balls, but just don't update or
         // render the disabled ones
