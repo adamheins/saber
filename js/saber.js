@@ -1,21 +1,24 @@
 import {quadSegmentIntersect, windQuad} from './geometry';
 import {drawCircle, drawLine, drawPolygon} from './gui';
-import {Vec2, wrapToPi, randInt} from './math';
+import {randInt, Vec2, wrapToPi} from './math';
 
 const TIMESTEP = 1 / 60;
+const GRAVITY = 500;
+const MAX_LIVES = 3;
+const NEW_LIFE_EVERY_N_POINTS = 10;
+
+const SABER_LENGTH = 125;
+const SABER_DRAG = 2;  // saber drag is viscous (linear)
+const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
+const SABER_HURT_TIME = 1.0;
 
 const MIN_NUM_BALLS = 0;
 const MAX_NUM_BALLS = 10;
-
-const LENGTH = 125;
-const GRAVITY = 500;
-const SABER_DRAG = 2;     // saber drag is viscous (linear)
-const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
-
-const ANG_VEL_MAX = Math.PI / (2 * TIMESTEP);
+const NEW_BALL_EVERY_N_POINTS = 10;
 
 const RADIUS = 10;
-const DYING_TIME = 0.1;
+const BALL_DYING_TIME = 0.1;
+const BALL_DRAG = 0.001;  // ball drag is aerodynamic (quadratic)
 
 // speed required to damage a ball
 const DAMAGE_SPEED = 1000;
@@ -24,6 +27,8 @@ const BALL_COLORS = ['green', 'blue', 'red'];
 const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
 const BUMPER_COLOR = 'rgb(100, 100, 100)';
+
+const GAME_OVER_MSG = '<strong>Game over!</strong> Refresh the page to start again.'
 
 
 class Bumper {
@@ -71,17 +76,17 @@ class Ball {
         this.vel.y = 2000 * (Math.random() - 0.5);
     }
 
-    draw(ctx) {
+    draw(ctx, done) {
         if (!this.enabled) {
             return;
         }
         let color = BALL_COLORS[this.health - 1];
         let radius = this.radius;
         if (this.dying) {
-            color = 'rgba(100, 100, 100, ' + (1 - this.dyingTime / DYING_TIME) +
-                ')';
-            radius = this.radius * (1 + 5 * this.dyingTime / DYING_TIME);
-        } else {
+            color = 'rgba(100, 100, 100, ' +
+                (1 - this.dyingTime / BALL_DYING_TIME) + ')';
+            radius = this.radius * (1 + 5 * this.dyingTime / BALL_DYING_TIME);
+        } else if (!done) {
             drawCircle(ctx, this.lastPos, this.radius, color);
         }
 
@@ -153,7 +158,7 @@ class Ball {
         }
         if (this.dying) {
             this.dyingTime += dt;
-            if (this.dyingTime > DYING_TIME) {
+            if (this.dyingTime > BALL_DYING_TIME) {
                 this.respawn();
             }
         }
@@ -188,15 +193,18 @@ class Saber {
 
         // vertices of the swept area
         this.pvs = null;
+
+        this.hurt = false;
+        this.hurtTime = 0;
     }
 
     computeEndPosition() {
         return computeSaberPoint(this.pos, this.angle, this.length);
     }
 
-    draw(ctx) {
+    draw(ctx, done) {
         // swept region of the blade
-        if (this.pvs) {
+        if (this.pvs && !done) {
             drawPolygon(ctx, this.pvs, SABER_COLOR);
         }
 
@@ -205,9 +213,15 @@ class Saber {
         drawLine(ctx, this.pos, end, SABER_COLOR, 3);
 
         // saber hilt
-        const v1 = computeSaberPoint(this.pos, this.angle, -1.5*RADIUS);
-        const v2 = computeSaberPoint(this.pos, this.angle, 1.5*RADIUS);
-        drawCircle(ctx, this.pos, RADIUS, 'rgba(100, 100, 100, 0.5)');
+        const v1 = computeSaberPoint(this.pos, this.angle, -1.5 * RADIUS);
+        const v2 = computeSaberPoint(this.pos, this.angle, 1.5 * RADIUS);
+
+        if (this.hurt) {
+            drawCircle(ctx, this.pos, RADIUS, 'rgba(255, 0, 0, 0.5)');
+        } else {
+            drawCircle(ctx, this.pos, RADIUS, 'rgba(100, 100, 100, 0.5)');
+        }
+
         drawLine(ctx, v1, v2, HILT_COLOR, 4);
     }
 
@@ -240,6 +254,14 @@ class Saber {
     updatePosition(target, dt) {
         this.pos = target;
         this.angle = wrapToPi(this.angle + dt * this.angVel);
+
+        if (this.hurt) {
+            this.hurtTime += dt;
+            if (this.hurtTime > SABER_HURT_TIME) {
+                this.hurt = false;
+                this.hurtTime = 0;
+            }
+        }
     }
 
     computeSweptRegion(target, dt) {
@@ -285,7 +307,7 @@ class Game {
         this.height = height;
 
         this.saber =
-            new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), LENGTH);
+            new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), SABER_LENGTH);
 
         // we keep the maximum possible of balls, but just don't update or
         // render the disabled ones
@@ -316,19 +338,24 @@ class Game {
             new Bumper(new Vec2(bh, bw), bumpVert2),
         ];
         this.score = 0;
-        this.lives = 3;
-        this.done = false;
+        this.lives = MAX_LIVES;
+
+        this.started = false;
+        this.done = false;  // game over
     }
 
     draw(ctx) {
         ctx.clearRect(0, 0, this.width, this.height);
-        this.saber.draw(ctx);
-        // this.home.draw(ctx);
-        this.balls.forEach(ball => ball.draw(ctx));
+        this.saber.draw(ctx, this.done);
+        this.balls.forEach(ball => ball.draw(ctx, this.done));
         this.bumpers.forEach(bumper => bumper.draw(ctx));
     }
 
     step(target, dt) {
+        if (!this.started || this.done) {
+            return;
+        }
+
         this.saber.updateVelocity(target, dt);
         for (let i = 0; i < this.balls.length; i++) {
             this.balls[i].collide(this.bumpers);
@@ -341,7 +368,9 @@ class Game {
             if (!ball.enabled || ball.dying) {
                 return;
             }
-            if (this.saber.pos.subtract(ball.pos).length() < 2*RADIUS) {
+
+            if (!this.saber.hurt && this.saber.pos.subtract(ball.pos).length() < 2 * RADIUS) {
+                this.saber.hurt = true;
                 this.lives--;
                 if (this.lives <= 0) {
                     this.done = true;
@@ -379,18 +408,15 @@ class Game {
                     if (ball.health <= 0) {
                         this.score++;
                         ball.dying = true;
-                        if ((this.score % 10 === 0) && (this.numBalls < MAX_NUM_BALLS)) {
+                        if ((this.score % NEW_BALL_EVERY_N_POINTS === 0) &&
+                            (this.numBalls < MAX_NUM_BALLS)) {
                             this.balls[this.numBalls].enabled = true;
                             this.numBalls++;
                         }
-                        if ((this.score % 5 === 0) && (this.lives < 3)) {
-                            this.lives++;
+                        if (this.score % NEW_LIFE_EVERY_N_POINTS === 0) {
+                            this.lives = Math.min(this.lives + 1, MAX_LIVES);
                         }
-                        // this.numBalls = Math.min(Math.floor(this.score / 10) + 1, MAX_NUM_BALLS);
-                        // let vx = 200 * (Math.random() - 0.5);
-                        // let vy = 200 * (Math.random() - 0.5);
-                        // ball.vel = ball.vel.add(new Vec2(vx, vy));
-                        // return;
+                        return;
                     }
                 }
 
@@ -413,39 +439,17 @@ function main() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    const moreButton = document.getElementById('more');
-    const lessButton = document.getElementById('less');
-
     const scoreText = document.getElementById('score');
     const livesText = document.getElementById('lives');
+    const noteText = document.getElementById('notification');
 
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
     canvas.width = w;
     canvas.height = w;
 
-    let started = false;
-
     let game = new Game(canvas.width, canvas.height);
     let target = Vec2.zero();
-
-    moreButton.addEventListener('click', event => {
-        if (game.numBalls >= MAX_NUM_BALLS) {
-            return;
-        }
-        game.balls[game.numBalls].enabled = true;
-        game.numBalls++;
-        game.draw(ctx);
-    });
-
-    lessButton.addEventListener('click', event => {
-        if (game.numBalls <= MIN_NUM_BALLS) {
-            return;
-        }
-        game.numBalls--;
-        game.balls[game.numBalls].enabled = false;
-        game.draw(ctx);
-    });
 
     canvas.addEventListener('mousedown', event => {
         game.saber.grab = true;
@@ -455,8 +459,8 @@ function main() {
     });
     canvas.addEventListener('mousemove', event => {
         target = new Vec2(event.offsetX, event.offsetY);
-        if (!started && target.subtract(game.saber.pos).length() <= RADIUS) {
-            started = true;
+        if (!game.started && target.subtract(game.saber.pos).length() <= RADIUS) {
+            game.started = true;
         }
     });
 
@@ -465,7 +469,7 @@ function main() {
     canvas.addEventListener('touchstart', event => {
         event.preventDefault();
 
-        started = true;
+        game.started = true;
         const x = event.changedTouches[0].clientX - rect.left;
         const y = event.changedTouches[0].clientY - rect.top;
         target = new Vec2(x, y);
@@ -489,12 +493,15 @@ function main() {
         const dt = time - lastTime;
         lastTime = time;
 
-        if (started && !game.done) {
-            game.step(target, dt / 1000);
-            scoreText.innerHTML = game.score;
-            livesText.innerHTML = game.lives;
-        }
+        game.step(target, dt / 1000);
         game.draw(ctx);
+
+        // TODO I want to put these updates elsewhere
+        if (game.done) {
+            noteText.innerHTML = GAME_OVER_MSG;
+        }
+        scoreText.innerHTML = game.score;
+        livesText.innerHTML = game.lives;
     }
     requestAnimationFrame(loop);
 }
