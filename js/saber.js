@@ -27,7 +27,8 @@ const SABER_COLOR = 'red';
 const HILT_COLOR = 'black';
 const BUMPER_COLOR = 'rgb(100, 100, 100)';
 
-const GAME_OVER_MSG = '<strong>Game over!</strong> Refresh the page to start again.'
+const GAME_OVER_MSG =
+    '<strong>Game over!</strong> Refresh the page to start again.'
 
 
 class Bumper {
@@ -310,8 +311,8 @@ class Game {
         if (width < 500) {
             saberLength = 0.25 * width;
         }
-        this.saber =
-            new Saber(new Vec2(0.5 * this.width, 0.5 * this.height), saberLength);
+        this.saber = new Saber(
+            new Vec2(0.5 * this.width, 0.5 * this.height), saberLength);
 
         // we keep the maximum possible of balls, but just don't update or
         // render the disabled ones
@@ -346,6 +347,7 @@ class Game {
 
         this.started = false;
         this.done = false;  // game over
+        this.freeplay = false;
     }
 
     draw(ctx) {
@@ -373,7 +375,8 @@ class Game {
                 return;
             }
 
-            if (!this.saber.hurt && this.saber.pos.subtract(ball.pos).length() < 2 * RADIUS) {
+            if (!this.freeplay && !this.saber.hurt &&
+                this.saber.pos.subtract(ball.pos).length() < 2 * RADIUS) {
                 this.saber.hurt = true;
                 this.lives--;
                 if (this.lives <= 0) {
@@ -447,6 +450,9 @@ function main() {
     const livesText = document.getElementById('lives');
     const noteText = document.getElementById('notification');
 
+    const freeplayBox = document.getElementById('freeplay');
+
+
     // make actual canvas shape match the display shape
     const w = canvas.offsetWidth;
     canvas.width = w;
@@ -454,6 +460,13 @@ function main() {
 
     let game = new Game(canvas.width, canvas.height);
     let target = Vec2.zero();
+
+    // set free-play mode
+    game.freeplay = freeplayBox.checked;
+    freeplayBox.addEventListener('change', event => {
+        game.freeplay = freeplayBox.checked;
+        game.score = 0;
+    });
 
     canvas.addEventListener('mousedown', event => {
         game.saber.grab = true;
@@ -463,7 +476,8 @@ function main() {
     });
     canvas.addEventListener('mousemove', event => {
         target = new Vec2(event.offsetX, event.offsetY);
-        if (!game.started && target.subtract(game.saber.pos).length() <= RADIUS) {
+        if (!game.started &&
+            target.subtract(game.saber.pos).length() <= RADIUS) {
             game.started = true;
         }
     });
@@ -505,7 +519,11 @@ function main() {
             noteText.innerHTML = GAME_OVER_MSG;
         }
         scoreText.innerHTML = game.score;
-        livesText.innerHTML = game.lives;
+        if (freeplayBox.checked) {
+            livesText.innerHTML = '-';
+        } else {
+            livesText.innerHTML = game.lives;
+        }
     }
     requestAnimationFrame(loop);
 }
